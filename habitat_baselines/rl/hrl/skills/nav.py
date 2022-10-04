@@ -8,7 +8,7 @@ from habitat.tasks.rearrange.rearrange_sensors import (
     TargetStartGpsCompassSensor,
 )
 from habitat.tasks.rearrange.sub_tasks.nav_to_obj_sensors import (
-    TargetOrGoalStartPointGoalSensor,
+    NavGoalPointGoalSensor,
 )
 from habitat_baselines.common.tensor_dict import TensorDict
 from habitat_baselines.rl.hrl.skills.nn_skill import NnSkillPolicy
@@ -42,12 +42,12 @@ class NavSkillPolicy(NnSkillPolicy):
     def _get_filtered_obs(self, observations, cur_batch_idx) -> TensorDict:
         ret_obs = super()._get_filtered_obs(observations, cur_batch_idx)
 
-        if TargetOrGoalStartPointGoalSensor.cls_uuid in ret_obs:
+        if NavGoalPointGoalSensor.cls_uuid in ret_obs:
             if self._cur_skill_args[cur_batch_idx].is_target:
                 replace_sensor = TargetGoalGpsCompassSensor.cls_uuid
             else:
                 replace_sensor = TargetStartGpsCompassSensor.cls_uuid
-            ret_obs[TargetOrGoalStartPointGoalSensor.cls_uuid] = observations[
+            ret_obs[NavGoalPointGoalSensor.cls_uuid] = observations[
                 replace_sensor
             ]
         return ret_obs
@@ -56,11 +56,7 @@ class NavSkillPolicy(NnSkillPolicy):
         return self._cur_skill_args[batch_idx].obj_idx
 
     def _is_skill_done(
-        self,
-        observations,
-        rnn_hidden_states,
-        prev_actions,
-        masks,
+        self, observations, rnn_hidden_states, prev_actions, masks, batch_idx
     ) -> torch.BoolTensor:
         filtered_prev_actions = prev_actions[
             :, self._ac_start : self._ac_start + self._ac_len

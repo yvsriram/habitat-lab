@@ -6,7 +6,7 @@
 
 import os.path as osp
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import magnum as mn
 import numpy as np
@@ -265,13 +265,15 @@ class RearrangeSim(HabitatSim):
         return len(self.robots_mgr)
 
     def set_robot_base_to_random_point(
-        self, max_attempts: int = 50, agent_idx: Optional[int] = None
+        self,
+        max_attempts: int = 50,
+        agent_idx: Optional[int] = None,
+        filter_func: Optional[Callable[[np.ndarray, float], bool]] = None,
     ) -> Tuple[np.ndarray, float]:
         """
         :returns: The set base position and rotation
         """
         robot = self.get_robot_data(agent_idx).robot
-        lower_bound, upper_bound = self.pathfinder.get_bounds()
 
         for attempt_i in range(max_attempts):
             start_pos = self.pathfinder.get_random_navigable_point()
@@ -279,10 +281,15 @@ class RearrangeSim(HabitatSim):
             start_pos = self.safe_snap_point(start_pos)
             start_rot = np.random.uniform(0, 2 * np.pi)
 
+            if filter_func is not None and not filter_func(
+                start_pos, start_rot
+            ):
+                continue
+
             robot.base_pos = start_pos
             robot.base_rot = start_rot
             self.perform_discrete_collision_detection()
-            did_collide, details = rearrange_collision(
+            did_collide, _ = rearrange_collision(
                 self, True, ignore_base=False, agent_idx=agent_idx
             )
             if not did_collide:
@@ -628,8 +635,7 @@ class RearrangeSim(HabitatSim):
                 add_back_viz_objs[name] = (before_pos, r)
             self.viz_ids = defaultdict(lambda: None)
 
-        if self.habitat_config.UPDATE_ROBOT:
-            self.robots_mgr.update_robots()
+        self.maybe_update_robot()
 
         if self.habitat_config.CONCUR_RENDER:
             self._prev_sim_obs = self.start_async_render()
@@ -669,6 +675,16 @@ class RearrangeSim(HabitatSim):
             obs["robot_third_rgb"] = debug_obs["robot_third_rgb"][:, :, :3]
 
         return obs
+
+    def maybe_update_robot(self):
+        """
+        Calls the update robots method on the robot manager if the
+        `UPDATE_ROBOT` configuration is set to True. Among other
+        things, this will set the robot's sensors' positions to their new
+        positions.
+        """
+        if self.habitat_config.UPDATE_ROBOT:
+            self.robots_mgr.update_robots()
 
     def visualize_position(
         self,

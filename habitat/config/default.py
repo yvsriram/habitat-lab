@@ -67,7 +67,7 @@ _C.TASK.CONSTRAINT_VIOLATION_DROPS_OBJECT = False
 _C.TASK.FORCE_REGENERATE = (
     False  # Forced to regenerate the starts even if they are already cached.
 )
-_C.TASK.SHOULD_SAVE_TO_CACHE = True  # Saves the generated starts to a cache if they are not already generated.
+_C.TASK.SHOULD_SAVE_TO_CACHE = False  # Saves the generated starts to a cache if they are not already generated.
 _C.TASK.MUST_LOOK_AT_TARG = True
 _C.TASK.OBJECT_IN_HAND_SAMPLE_PROB = 0.167
 _C.TASK.GFX_REPLAY_DIR = "data/replays"
@@ -82,7 +82,6 @@ _C.TASK.SPAWN_REGION_SCALE = 0.2
 _C.TASK.JOINT_MAX_IMPULSE = -1.0
 _C.TASK.DESIRED_RESTING_POSITION = [0.5, 0.0, 1.0]
 _C.TASK.USE_MARKER_T = True
-_C.TASK.CACHE_ROBOT_INIT = False
 _C.TASK.SUCCESS_STATE = 0.0
 # Measurements for composite tasks.
 _C.TASK.REWARD_MEASUREMENT = ""
@@ -152,7 +151,6 @@ _C.TASK.ACTIONS.BASE_VELOCITY.TYPE = "BaseVelAction"
 _C.TASK.ACTIONS.BASE_VELOCITY.LIN_SPEED = 10.0
 _C.TASK.ACTIONS.BASE_VELOCITY.ANG_SPEED = 10.0
 _C.TASK.ACTIONS.BASE_VELOCITY.ALLOW_DYN_SLIDE = True
-_C.TASK.ACTIONS.BASE_VELOCITY.END_ON_STOP = False
 _C.TASK.ACTIONS.BASE_VELOCITY.ALLOW_BACK = True
 _C.TASK.ACTIONS.BASE_VELOCITY.MIN_ABS_LIN_SPEED = 1.0
 _C.TASK.ACTIONS.BASE_VELOCITY.MIN_ABS_ANG_SPEED = 1.0
@@ -179,6 +177,8 @@ _C.TASK.ACTIONS.ORACLE_NAV_ACTION.MIN_ABS_ANG_SPEED = 1.0
 _C.TASK.ACTIONS.ORACLE_NAV_ACTION.ALLOW_DYN_SLIDE = True
 _C.TASK.ACTIONS.ORACLE_NAV_ACTION.END_ON_STOP = False
 _C.TASK.ACTIONS.ORACLE_NAV_ACTION.ALLOW_BACK = True
+_C.TASK.ACTIONS.ORACLE_NAV_ACTION.NUM_SPAWN_ATTEMPTS = 400
+_C.TASK.ACTIONS.ORACLE_NAV_ACTION.SPAWN_MAX_DIST_TO_OBJ = 2.0
 # -----------------------------------------------------------------------------
 # # TASK SENSORS
 # -----------------------------------------------------------------------------
@@ -323,9 +323,7 @@ _C.TASK.GOAL_SENSOR.DIMENSIONALITY = 3
 # TARGET START OR GOAL SENSOR
 # -----------------------------------------------------------------------------
 _C.TASK.TARGET_START_POINT_GOAL_SENSOR = CN()
-_C.TASK.TARGET_START_POINT_GOAL_SENSOR.TYPE = (
-    "TargetOrGoalStartPointGoalSensor"
-)
+_C.TASK.TARGET_START_POINT_GOAL_SENSOR.TYPE = "NavGoalPointGoalSensor"
 # -----------------------------------------------------------------------------
 # COMPOSITE SENSOR
 # -----------------------------------------------------------------------------
@@ -342,12 +340,6 @@ _C.TASK.TARGET_START_GPS_COMPASS_SENSOR.TYPE = "TargetStartGpsCompassSensor"
 _C.TASK.TARGET_GOAL_GPS_COMPASS_SENSOR = CN()
 _C.TASK.TARGET_GOAL_GPS_COMPASS_SENSOR.TYPE = "TargetGoalGpsCompassSensor"
 # -----------------------------------------------------------------------------
-# NAV TO SKILL ID SENSOR
-# -----------------------------------------------------------------------------
-_C.TASK.NAV_TO_SKILL_SENSOR = CN()
-_C.TASK.NAV_TO_SKILL_SENSOR.TYPE = "NavToSkillSensor"
-_C.TASK.NAV_TO_SKILL_SENSOR.NUM_SKILLS = 8
-# -----------------------------------------------------------------------------
 # ABSOLUTE TARGET START SENSOR
 # -----------------------------------------------------------------------------
 _C.TASK.ABS_TARGET_START_SENSOR = CN()
@@ -361,11 +353,6 @@ _C.TASK.ABS_GOAL_SENSOR = CN()
 _C.TASK.ABS_GOAL_SENSOR.TYPE = "AbsGoalSensor"
 _C.TASK.ABS_GOAL_SENSOR.GOAL_FORMAT = "CARTESIAN"
 _C.TASK.ABS_GOAL_SENSOR.DIMENSIONALITY = 3
-# -----------------------------------------------------------------------------
-# DISTANCE TO NAVIGATION GOAL SENSOR
-# -----------------------------------------------------------------------------
-_C.TASK.DIST_TO_NAV_GOAL = CN()
-_C.TASK.DIST_TO_NAV_GOAL.TYPE = "DistToNavGoalSensor"
 # -----------------------------------------------------------------------------
 # LOCALIZATION SENSOR
 # -----------------------------------------------------------------------------
@@ -458,6 +445,7 @@ _C.TASK.ART_OBJ_STATE = CN()
 _C.TASK.ART_OBJ_STATE.TYPE = "ArtObjState"
 _C.TASK.ART_OBJ_SUCCESS = CN()
 _C.TASK.ART_OBJ_SUCCESS.TYPE = "ArtObjSuccess"
+_C.TASK.ART_OBJ_SUCCESS.MUST_CALL_STOP = True
 _C.TASK.ART_OBJ_SUCCESS.REST_DIST_THRESHOLD = 0.15
 
 _C.TASK.ART_OBJ_REWARD = CN()
@@ -482,10 +470,6 @@ _C.TASK.ROT_DIST_TO_GOAL = CN()
 _C.TASK.ROT_DIST_TO_GOAL.TYPE = "RotDistToGoal"
 _C.TASK.DIST_TO_GOAL = CN()
 _C.TASK.DIST_TO_GOAL.TYPE = "DistToGoal"
-_C.TASK.BAD_CALLED_TERMINATE = CN()
-_C.TASK.BAD_CALLED_TERMINATE.TYPE = "BadCalledTerminate"
-_C.TASK.BAD_CALLED_TERMINATE.BAD_TERM_PEN = 0.0
-_C.TASK.BAD_CALLED_TERMINATE.DECAY_BAD_TERM = False
 _C.TASK.NAV_TO_POS_SUCC = CN()
 _C.TASK.NAV_TO_POS_SUCC.TYPE = "NavToPosSucc"
 _C.TASK.NAV_TO_POS_SUCC.SUCCESS_DISTANCE = 0.2
@@ -617,8 +601,8 @@ _C.TASK.COMPOSITE_REWARD.STAGE_COMPLETE_REWARD = 10.0
 _C.TASK.COMPOSITE_REWARD.SUCCESS_REWARD = 10.0
 _C.TASK.DOES_WANT_TERMINATE = CN()
 _C.TASK.DOES_WANT_TERMINATE.TYPE = "DoesWantTerminate"
-_C.TASK.COMPOSITE_BAD_CALLED_TERMINATE = CN()
-_C.TASK.COMPOSITE_BAD_CALLED_TERMINATE.TYPE = "CompositeBadCalledTerminate"
+_C.TASK.BAD_CALLED_TERMINATE = CN()
+_C.TASK.BAD_CALLED_TERMINATE.TYPE = "BadCalledTerminate"
 # -----------------------------------------------------------------------------
 # # EQA TASK
 # -----------------------------------------------------------------------------
@@ -703,8 +687,8 @@ _C.SIMULATOR.CTRL_FREQ = 120.0
 _C.SIMULATOR.AC_FREQ_RATIO = 4
 _C.SIMULATOR.LOAD_OBJS = False
 # Rearrange Agent Grasping
-_C.SIMULATOR.HOLD_THRESH = 0.09
-_C.SIMULATOR.GRASP_IMPULSE = 1000.0
+_C.SIMULATOR.HOLD_THRESH = 0.2
+_C.SIMULATOR.GRASP_IMPULSE = 10000.0
 # -----------------------------------------------------------------------------
 # SIMULATOR SENSORS
 # -----------------------------------------------------------------------------

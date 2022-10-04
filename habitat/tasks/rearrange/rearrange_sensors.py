@@ -422,6 +422,10 @@ class RestingPositionSensor(Sensor):
 
 @registry.register_sensor
 class LocalizationSensor(UsesRobotInterface, Sensor):
+    """
+    The position and angle of the robot in world coordinates.
+    """
+
     cls_uuid = "localization_sensor"
 
     def __init__(self, sim, config, *args, **kwargs):
@@ -443,7 +447,8 @@ class LocalizationSensor(UsesRobotInterface, Sensor):
         )
 
     def get_observation(self, observations, episode, *args, **kwargs):
-        T = self._sim.get_robot_data(self.robot_id).robot.base_transformation
+        robot = self._sim.get_robot_data(self.robot_id).robot
+        T = robot.base_transformation
         forward = np.array([1.0, 0, 0])
         heading = np.array(T.transform_vector(forward))
         forward = forward[[0, 2]]
@@ -453,7 +458,7 @@ class LocalizationSensor(UsesRobotInterface, Sensor):
         c = np.cross(forward, heading) < 0
         if not c:
             heading_angle = -1.0 * heading_angle
-        return np.array([*T.translation, heading_angle], dtype=np.float32)
+        return np.array([*robot.base_pos, heading_angle], dtype=np.float32)
 
 
 @registry.register_sensor
@@ -967,3 +972,59 @@ class RearrangeReward(UsesRobotInterface, Measure):
             ),
         )
         return reward
+
+
+@registry.register_measure
+class DoesWantTerminate(Measure):
+    """
+    Returns 1 if the agent has called the stop action and 0 otherwise.
+    """
+
+    cls_uuid: str = "does_want_terminate"
+
+    @staticmethod
+    def _get_uuid(*args, **kwargs):
+        return DoesWantTerminate.cls_uuid
+
+    def reset_metric(self, *args, **kwargs):
+        self.update_metric(*args, **kwargs)
+
+    def update_metric(self, *args, task, **kwargs):
+        self._metric = task.actions["REARRANGE_STOP"].does_want_terminate
+
+
+@registry.register_measure
+class BadCalledTerminate(Measure):
+    """
+    Returns 0 if the agent has called the stop action when the success
+    condition is also met or not called the stop action when the success
+    condition is not met. Returns 1 otherwise.
+    """
+
+    cls_uuid: str = "bad_called_terminate"
+
+    @staticmethod
+    def _get_uuid(*args, **kwargs):
+        return BadCalledTerminate.cls_uuid
+
+    def __init__(self, config, task, *args, **kwargs):
+        super().__init__(**kwargs)
+        self._success_measure_name = task._config.SUCCESS_MEASURE
+        self._config = config
+
+    def reset_metric(self, *args, task, **kwargs):
+        task.measurements.check_measure_dependencies(
+            self.uuid,
+            [DoesWantTerminate.cls_uuid, self._success_measure_name],
+        )
+        self.update_metric(*args, task=task, **kwargs)
+
+    def update_metric(self, *args, task, **kwargs):
+        does_action_want_stop = task.measurements.measures[
+            DoesWantTerminate.cls_uuid
+        ].get_metric()
+        is_succ = task.measurements.measures[
+            self._success_measure_name
+        ].get_metric()
+
+        self._metric = (not is_succ) and does_action_want_stop

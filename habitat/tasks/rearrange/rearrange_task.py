@@ -6,17 +6,21 @@
 
 import copy
 import os.path as osp
+from collections import OrderedDict
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
+from gym import spaces
 
 from habitat.core.dataset import Episode
 from habitat.core.registry import registry
+from habitat.core.simulator import Sensor, SensorSuite
 from habitat.tasks.nav.nav import NavigationTask
 from habitat.tasks.rearrange.rearrange_sim import RearrangeSim
 from habitat.tasks.rearrange.utils import (
     CacheHelper,
     CollisionDetails,
+    UsesRobotInterface,
     rearrange_collision,
     rearrange_logger,
 )
@@ -27,9 +31,6 @@ def merge_sim_episode_with_object_config(sim_config, episode):
     sim_config.ep_info = [episode.__dict__]
     sim_config.freeze()
     return sim_config
-
-
-ADD_CACHE_KEY = "add_cache_key"
 
 
 @registry.register_task(name="RearrangeEmptyTask-v0")
@@ -45,7 +46,32 @@ class RearrangeTask(NavigationTask):
     def overwrite_sim_config(self, sim_config, episode):
         return merge_sim_episode_with_object_config(sim_config, episode)
 
-    def __init__(self, *args, sim, dataset=None, **kwargs) -> None:
+    def _duplicate_sensor_suite(self, sensor_suite: SensorSuite) -> None:
+        """
+        Modifies the sensor suite in place to duplicate robot specific sensors
+        between the two robots.
+        """
+
+        task_new_sensors: Dict[str, Sensor] = {}
+        task_obs_spaces = OrderedDict()
+        for robot_idx, agent_id in enumerate(self._sim.robots_mgr.agent_names):
+            for sensor_name, sensor in sensor_suite.sensors.items():
+                if isinstance(sensor, UsesRobotInterface):
+                    new_sensor = copy.copy(sensor)
+                    new_sensor.robot_id = robot_idx
+                    full_name = f"{agent_id}_{sensor_name}"
+                    task_new_sensors[full_name] = new_sensor
+                    task_obs_spaces[full_name] = new_sensor.observation_space
+                else:
+                    task_new_sensors[sensor_name] = sensor
+                    task_obs_spaces[sensor_name] = sensor.observation_space
+
+        sensor_suite.sensors = task_new_sensors
+        sensor_suite.observation_spaces = spaces.Dict(spaces=task_obs_spaces)
+
+    def __init__(
+        self, *args, sim, dataset=None, should_place_robot=True, **kwargs
+    ) -> None:
         self.n_objs = len(dataset.episodes[0].targets)
 
         super().__init__(sim=sim, dataset=dataset, **kwargs)
@@ -57,14 +83,16 @@ class RearrangeTask(NavigationTask):
         self._targ_idx: int = 0
         self._episode_id: str = ""
         self._cur_episode_step = 0
+        self._should_place_robot = should_place_robot
 
         data_path = dataset.config.DATA_PATH.format(split=dataset.config.SPLIT)
         fname = data_path.split("/")[-1].split(".")[0]
         cache_path = osp.join(
-            osp.dirname(data_path), f"{fname}_robot_start.pickle"
+            osp.dirname(data_path),
+            f"{fname}_{self._config.TYPE}_robot_start.pickle",
         )
 
-        if self._config.CACHE_ROBOT_INIT or osp.exists(cache_path):
+        if self._config.SHOULD_SAVE_TO_CACHE or osp.exists(cache_path):
             self._robot_init_cache = CacheHelper(
                 cache_path,
                 def_val={},
@@ -73,6 +101,10 @@ class RearrangeTask(NavigationTask):
             self._robot_pos_start = self._robot_init_cache.load()
         else:
             self._robot_pos_start = None
+
+        if len(self._sim.robots_mgr) > 1:
+            # Duplicate sensors that handle robots. One for each robot.
+            self._duplicate_sensor_suite(self.sensor_suite)
 
     @property
     def targ_idx(self):
@@ -94,24 +126,38 @@ class RearrangeTask(NavigationTask):
     def set_sim_reset(self, sim_reset):
         self._sim_reset = sim_reset
 
-    def _set_robot_start(self, agent_idx: int) -> None:
-        start_ident = f"{self._episode_id}_{agent_idx}"
+    def _get_cached_robot_start(self, agent_idx: int = 0):
+        start_ident = self._get_ep_init_ident(agent_idx)
         if (
             self._robot_pos_start is None
             or start_ident not in self._robot_pos_start
             or self._config.FORCE_REGENERATE
         ):
+            return None
+        else:
+            return self._robot_pos_start[start_ident]
+
+    def _get_ep_init_ident(self, agent_idx):
+        return f"{self._episode_id}_{agent_idx}"
+
+    def _cache_robot_start(self, cache_data, agent_idx: int = 0):
+        if (
+            self._robot_pos_start is not None
+            and self._config.SHOULD_SAVE_TO_CACHE
+        ):
+            start_ident = self._get_ep_init_ident(agent_idx)
+            self._robot_pos_start[start_ident] = cache_data
+            self._robot_init_cache.save(self._robot_pos_start)
+
+    def _set_robot_start(self, agent_idx: int) -> None:
+        robot_start = self._get_cached_robot_start(agent_idx)
+        if robot_start is None:
             robot_pos, robot_rot = self._sim.set_robot_base_to_random_point(
                 agent_idx=agent_idx
             )
-            if (
-                self._robot_pos_start is not None
-                and self._config.SHOULD_SAVE_TO_CACHE
-            ):
-                self._robot_pos_start[start_ident] = (robot_pos, robot_rot)
-                self._robot_init_cache.save(self._robot_pos_start)
+            self._cache_robot_start((robot_pos, robot_rot), agent_idx)
         else:
-            robot_pos, robot_rot = self._robot_pos_start[start_ident]
+            robot_pos, robot_rot = robot_start
         robot = self._sim.get_robot_data(agent_idx).robot
         robot.base_pos = robot_pos
         robot.base_rot = robot_rot
@@ -126,8 +172,9 @@ class RearrangeTask(NavigationTask):
                 action_instance.reset(episode=episode, task=self)
             self._is_episode_active = True
 
-            for agent_idx in range(self._sim.num_robots):
-                self._set_robot_start(agent_idx)
+            if self._should_place_robot:
+                for agent_idx in range(self._sim.num_robots):
+                    self._set_robot_start(agent_idx)
 
         self.prev_measures = self.measurements.get_metrics()
         self._targ_idx = 0
@@ -137,6 +184,7 @@ class RearrangeTask(NavigationTask):
         self._done = False
         self._cur_episode_step = 0
         if fetch_observations:
+            self._sim.maybe_update_robot()
             return self._get_observations(episode)
         else:
             return None
