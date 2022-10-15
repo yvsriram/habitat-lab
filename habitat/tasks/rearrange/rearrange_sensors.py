@@ -23,9 +23,10 @@ from habitat.tasks.rearrange.utils import (
     CollisionDetails,
     UsesRobotInterface,
     batch_transform_point,
+    get_angle_to_pos,
     rearrange_logger,
 )
-from habitat.tasks.utils import cartesian_to_polar, get_angle
+from habitat.tasks.utils import cartesian_to_polar
 
 
 @registry.register_sensor
@@ -450,14 +451,7 @@ class LocalizationSensor(UsesRobotInterface, Sensor):
         robot = self._sim.get_robot_data(self.robot_id).robot
         T = robot.base_transformation
         forward = np.array([1.0, 0, 0])
-        heading = np.array(T.transform_vector(forward))
-        forward = forward[[0, 2]]
-        heading = heading[[0, 2]]
-
-        heading_angle = get_angle(forward, heading)
-        c = np.cross(forward, heading) < 0
-        if not c:
-            heading_angle = -1.0 * heading_angle
+        heading_angle = get_angle_to_pos(T.transform_vector(forward))
         return np.array([*robot.base_pos, heading_angle], dtype=np.float32)
 
 
