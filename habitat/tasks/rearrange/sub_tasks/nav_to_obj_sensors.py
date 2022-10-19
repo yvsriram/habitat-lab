@@ -112,9 +112,15 @@ class NavToObjReward(RearrangeReward):
             [
                 NavToObjSuccess.cls_uuid,
                 DistToGoal.cls_uuid,
-                RotDistToGoal.cls_uuid,
             ],
         )
+        if self._config.SHOULD_REWARD_TURN:
+            task.measurements.check_measure_dependencies(
+                self.uuid,
+                [
+                    RotDistToGoal.cls_uuid,
+                ],
+            )
         self._cur_angle_dist = -1.0
         self._prev_dist = -1.0
         super().reset_metric(
@@ -248,8 +254,13 @@ class NavToObjSuccess(Measure):
         # Get the end_on_stop property from the action
         task.measurements.check_measure_dependencies(
             self.uuid,
-            [NavToPosSucc.cls_uuid, RotDistToGoal.cls_uuid],
+            [NavToPosSucc.cls_uuid],
         )
+        if self._config.MUST_LOOK_AT_TARG:
+            task.measurements.check_measure_dependencies(
+                self.uuid,
+                [RotDistToGoal.cls_uuid],
+            )
         self.update_metric(*args, task=task, **kwargs)
 
     def __init__(self, *args, config, **kwargs):
@@ -257,9 +268,6 @@ class NavToObjSuccess(Measure):
         super().__init__(*args, config=config, **kwargs)
 
     def update_metric(self, *args, episode, task, observations, **kwargs):
-        angle_dist = task.measurements.measures[
-            RotDistToGoal.cls_uuid
-        ].get_metric()
 
         nav_pos_succ = task.measurements.measures[
             NavToPosSucc.cls_uuid
@@ -270,6 +278,10 @@ class NavToObjSuccess(Measure):
         ].get_metric()
 
         if self._config.MUST_LOOK_AT_TARG:
+            angle_dist = task.measurements.measures[
+                RotDistToGoal.cls_uuid
+            ].get_metric()
+
             self._metric = (
                 nav_pos_succ and angle_dist < self._config.SUCCESS_ANGLE_DIST
             )
