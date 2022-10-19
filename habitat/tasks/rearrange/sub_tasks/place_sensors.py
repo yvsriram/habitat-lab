@@ -8,6 +8,7 @@
 from habitat.core.embodied_task import Measure
 from habitat.core.registry import registry
 from habitat.tasks.rearrange.rearrange_sensors import (
+    EndEffectorToGoalDistance,
     EndEffectorToRestDistance,
     ForceTerminate,
     ObjAtGoal,
@@ -26,7 +27,7 @@ class PlaceReward(RearrangeReward):
         self._prev_dist = -1.0
         self._prev_dropped = False
         self._metric = None
-
+        self._config = config
         super().__init__(*args, sim=sim, config=config, task=task, **kwargs)
 
     @staticmethod
@@ -44,6 +45,13 @@ class PlaceReward(RearrangeReward):
                 ForceTerminate.cls_uuid,
             ],
         )
+        if self._config.INCLUDE_EE_TO_GOAL_DIST:
+            task.measurements.check_measure_dependencies(
+                self.uuid,
+                [
+                    EndEffectorToGoalDistance.cls_uuid,
+                ],
+            )
         self._prev_dist = -1.0
         self._prev_dropped = not self._sim.grasp_mgr.is_grasped
 
@@ -79,6 +87,11 @@ class PlaceReward(RearrangeReward):
 
         if (not obj_at_goal) or cur_picked:
             dist_to_goal = obj_to_goal_dist[str(task.abs_targ_idx)]
+            if self._config.INCLUDE_EE_TO_GOAL_DIST:
+                ee_to_goal_distance = task.measurements.measures[
+                    EndEffectorToGoalDistance.cls_uuid
+                ].get_metric()
+                dist_to_goal += ee_to_goal_distance[str(task.abs_targ_idx)]
         else:
             dist_to_goal = ee_to_rest_distance
 
