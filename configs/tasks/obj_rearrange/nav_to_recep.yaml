@@ -4,8 +4,7 @@ GYM:
     - robot_head_depth
     - robot_head_rgb
     - joint
-    - start_receptacle
-    - object_category
+    - goal_receptacle
 ENVIRONMENT:
     MAX_EPISODE_STEPS: 400
 DATASET:
@@ -17,7 +16,7 @@ TASK:
     TYPE: LangNavToObjTask-v0
 
     # Spawn params
-    OBJECT_IN_HAND_SAMPLE_PROB: 0.0
+    OBJECT_IN_HAND_SAMPLE_PROB: 1.0
     MIN_START_DISTANCE: 3.0
     FORCE_REGENERATE: false
     SHOULD_SAVE_TO_CACHE: False
@@ -39,8 +38,7 @@ TASK:
         DIMENSIONALITY: 7
     SENSORS:
     - JOINT_SENSOR
-    - START_RECEPTACLE_SENSOR
-    - OBJECT_CATEGORY_SENSOR
+    - GOAL_RECEPTACLE_SENSOR
     FORCE_TERMINATE:
         TYPE: ForceTerminate
         MAX_ACCUM_FORCE: 10_000.0

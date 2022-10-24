@@ -365,6 +365,20 @@ _C.TASK.OBJECT_CATEGORY_SENSOR = CN()
 _C.TASK.OBJECT_CATEGORY_SENSOR.TYPE = "ObjectCategorySensor"
 _C.TASK.OBJECT_CATEGORY_SENSOR.GOAL_SPEC_MAX_VAL = 50
 # -----------------------------------------------------------------------------
+# REARRANGE OBJECT NAME EMBEDDING
+# -----------------------------------------------------------------------------
+_C.TASK.OBJECT_EMBEDDING_SENSOR = CN()
+_C.TASK.OBJECT_EMBEDDING_SENSOR.TYPE = "ObjectEmbeddingSensor"
+_C.TASK.OBJECT_EMBEDDING_SENSOR.EMBEDDINGS_FILE = (
+    "roberta_cls_embeddings.pickle"
+)
+# -----------------------------------------------------------------------------
+# REARRANGE START RECEPTACLE SENSOR
+# -----------------------------------------------------------------------------
+_C.TASK.START_RECEPTACLE_SENSOR = CN()
+_C.TASK.START_RECEPTACLE_SENSOR.TYPE = "StartReceptacleSensor"
+_C.TASK.START_RECEPTACLE_SENSOR.GOAL_SPEC_MAX_VAL = 50
+# -----------------------------------------------------------------------------
 # REARRANGE GOAL RECEPTACLE SENSOR
 # -----------------------------------------------------------------------------
 _C.TASK.GOAL_RECEPTACLE_SENSOR = CN()
