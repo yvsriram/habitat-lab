@@ -61,7 +61,7 @@ class Receptacle(ABC):
 
     @abstractmethod
     def sample_uniform_local(
-        self, sample_region_scale: float = 1.0
+        self, sim, sample_region_scale: float = 1.0
     ) -> mn.Vector3:
         """
         Sample a uniform random point within Receptacle in local space.
@@ -83,7 +83,7 @@ class Receptacle(ABC):
 
         :param sample_region_scale: defines a XZ scaling of the sample region around its center.
         """
-        local_sample = self.sample_uniform_local(sample_region_scale)
+        local_sample = self.sample_uniform_local(sim, sample_region_scale)
         return self.get_global_transform(sim).transform_point(local_sample)
 
     def add_receptacle_visualization(
@@ -104,7 +104,7 @@ class OnTopOfReceptacle(Receptacle):
         self.episode_data = episode_data
 
     def sample_uniform_local(
-        self, sample_region_scale: float = 1.0
+        self, sim, sample_region_scale: float = 1.0
     ) -> mn.Vector3:
         return mn.Vector3(0.0, 0.1, 0.0)
 
@@ -130,6 +130,7 @@ class AABBReceptacle(Receptacle):
         up: Optional[mn.Vector3] = None,
         rotation: Optional[mn.Quaternion] = None,
         category: Optional[str] = None,
+        global_bounds: bool = False,
     ) -> None:
         """
         :param name: The name of the Receptacle. Should be unique and descriptive for any one object.
@@ -138,13 +139,15 @@ class AABBReceptacle(Receptacle):
         :param parent_object_handle: The rigid or articulated object instance handle for the parent object to which the Receptacle is attached. None for globally defined stage Receptacles.
         :param parent_link: Index of the link to which the Receptacle is attached if the parent is an ArticulatedObject. -1 denotes the base link. None for rigid objects and stage Receptables.
         :param rotation: Optional rotation of the Receptacle AABB. Only used for globally defined stage Receptacles to provide flexability.
+        :param global_bounds: Optional whether the bounds being stored are in global scene coordinates
         """
         super().__init__(name, parent_object_handle, parent_link, up, category)
         self.bounds = bounds
+        self.global_bounds = global_bounds
         self.rotation = rotation if rotation is not None else mn.Quaternion()
 
     def sample_uniform_local(
-        self, sample_region_scale: float = 1.0
+        self, sim, sample_region_scale: float = 1.0
     ) -> mn.Vector3:
         """
         Sample a uniform random point in the local AABB.
@@ -159,14 +162,13 @@ class AABBReceptacle(Receptacle):
         sample_range = [scaled_region.min, scaled_region.max]
         sample_range[0][self.up_axis] = self.bounds.min[self.up_axis]
         sample_range[1][self.up_axis] = self.bounds.max[self.up_axis]
-
         return np.random.uniform(sample_range[0], sample_range[1])
 
     def get_global_transform(self, sim: habitat_sim.Simulator) -> mn.Matrix4:
         """
         Isolates boilerplate necessary to extract receptacle global transform of the Receptacle at the current state.
         """
-        if self.parent_object_handle is None:
+        if self.global_bounds or self.parent_object_handle is None:
             # this is a global stage receptacle
             from habitat_sim.utils.common import quat_from_two_vectors as qf2v
             from habitat_sim.utils.common import quat_to_magnum as qtm
@@ -299,6 +301,7 @@ def parse_receptacles_from_user_config(
     parent_object_handle: Optional[str] = None,
     valid_link_names: Optional[List[str]] = None,
     ao_uniform_scaling: float = 1.0,
+    global_receptacles: bool = False,
 ) -> List[Union[Receptacle, AABBReceptacle]]:
     """
     Parse receptacle metadata from the provided user subconfig object.
@@ -366,17 +369,17 @@ def parse_receptacles_from_user_config(
                 "position"
             )
             receptacle_scale = ao_uniform_scaling * sub_config.get("scale")
-
+            handle = parent_object_handle
+            if sub_config.has_value("parent_object_handle"):
+                handle = sub_config.get("parent_object_handle")
             category = None
             if sub_config.has_value("category"):
                 category = sub_config.get("category")
-            elif parent_object_handle is not None:
+            elif handle is not None:
                 category = re.sub(
                     r"_[0-9]+",
                     "",
-                    parent_object_handle.split(":")[0][:-1].replace(
-                        "frl_apartment_", ""
-                    ),
+                    handle.split(":")[0][:-1].replace("frl_apartment_", ""),
                 )
 
             # TODO: adding more receptacle types will require additional logic here
@@ -389,9 +392,10 @@ def parse_receptacles_from_user_config(
                     ),
                     rotation=rotation,
                     up=up,
-                    parent_object_handle=parent_object_handle,
+                    parent_object_handle=handle,
                     parent_link=parent_link_ix,
                     category=category,
+                    global_bounds=global_receptacles,
                 )
             )
 
@@ -414,7 +418,11 @@ def find_receptacles(
     stage_config = sim.get_stage_initialization_template()
     if stage_config is not None:
         stage_user_attr = stage_config.get_user_config()
-        receptacles.extend(parse_receptacles_from_user_config(stage_user_attr))
+        receptacles.extend(
+            parse_receptacles_from_user_config(
+                stage_user_attr, global_receptacles=True
+            )
+        )
 
     # rigid object receptacles
     for obj_handle in obj_mgr.get_object_handles():
