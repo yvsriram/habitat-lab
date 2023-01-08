@@ -800,6 +800,46 @@ class RearrangeEpisodeGenerator:
         )
         self.vdb = DebugVisualizer(self.sim, output_path=output_path)
 
+    def draw_contact_debug(self):
+        """
+        This method is called to render a debug line overlay displaying active contact points and normals.
+        Yellow lines show the contact distance along the normal and red lines show the contact normal at a fixed length.
+        """
+        blue = mn.Color4.blue()
+        red = mn.Color4.red()
+        cps = self.sim.get_physics_contact_points()
+        debug_lines_per_obj = defaultdict(list)
+        # camera_position = self.render_camera.render_camera.node.absolute_translation
+        # only showing active contacts
+        active_contacts = (x for x in cps if x.is_active)
+        for cp in active_contacts:
+            for o in [cp.object_id_a, cp.object_id_b]:
+                # red shows the contact distance
+                debug_lines_per_obj[o].append(
+                    (
+                        [
+                            cp.position_on_b_in_ws,
+                            cp.position_on_b_in_ws
+                            + cp.contact_normal_on_b_in_ws
+                            * -cp.contact_distance,
+                        ],
+                        red,
+                    )
+                )
+                # blue shows the contact normal at a fixed length for visualization
+                debug_lines_per_obj[o].append(
+                    (
+                        [
+                            cp.position_on_b_in_ws,
+                            cp.position_on_b_in_ws
+                            + cp.contact_normal_on_b_in_ws * 0.1,
+                        ],
+                        blue,
+                    )
+                )
+
+        return debug_lines_per_obj
+
     def settle_sim(
         self, duration: float = 5.0, make_video: bool = True
     ) -> bool:
@@ -943,9 +983,16 @@ class RearrangeEpisodeGenerator:
 
         logger.info("----------------------------------------")
 
+        self.sim.get_debug_line_render().set_line_width(10)
+
+        debug_lines_per_obj = self.draw_contact_debug()
         if self._render_debug_obs and success:
             for obj in self.ep_sampled_objects:
-                self.vdb.peek_rigid_object(obj, peek_all_axis=True)
+                self.vdb.peek_rigid_object(
+                    obj,
+                    peek_all_axis=True,
+                    debug_lines=debug_lines_per_obj[obj.object_id],
+                )
 
         # return success or failure
         return success
