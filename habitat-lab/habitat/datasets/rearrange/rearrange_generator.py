@@ -798,6 +798,7 @@ class RearrangeEpisodeGenerator:
             if self.vdb is None
             else self.vdb.output_path
         )
+        output_path = "rearrange_ep_gen_output/0109_new_objects_more_scenes"
         self.vdb = DebugVisualizer(self.sim, output_path=output_path)
 
     def draw_contact_debug(self):
@@ -985,8 +986,8 @@ class RearrangeEpisodeGenerator:
 
         self.sim.get_debug_line_render().set_line_width(10)
 
-        debug_lines_per_obj = self.draw_contact_debug()
         if self._render_debug_obs and success:
+            debug_lines_per_obj = self.draw_contact_debug()
             for obj in self.ep_sampled_objects:
                 self.vdb.peek_rigid_object(
                     obj,
