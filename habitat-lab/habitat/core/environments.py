@@ -40,6 +40,39 @@ class RLTaskEnv(habitat.RLEnv):
     def __init__(
         self, config: "DictConfig", dataset: Optional[Dataset] = None
     ):
+        if (
+            "third_rgb_sensor"
+            not in config["simulator"]["agents"]["main_agent"]["sim_sensors"]
+        ):
+            from copy import deepcopy
+
+            from omegaconf import DictConfig, OmegaConf
+
+            conf = deepcopy(config)
+            OmegaConf.set_readonly(conf, False)
+            conf["simulator"]["agents"]["main_agent"][
+                "sim_sensors"
+            ] = DictConfig(
+                {
+                    **conf["simulator"]["agents"]["main_agent"]["sim_sensors"],
+                    "third_rgb_sensor": {
+                        "type": "HabitatSimRGBSensor",
+                        "height": 512,
+                        "width": 512,
+                        "position": [0.0, 1.25, 0.0],
+                        "orientation": [0.0, 0.0, 0.0],
+                        "hfov": 90,
+                        "sensor_subtype": "PINHOLE",
+                        "noise_model": "None",
+                        "noise_model_kwargs": {},
+                        "uuid": "robot_third_rgb",
+                    },
+                }
+            )
+            # 'head_rgb_sensor': {'type': 'HabitatSimRGBSensor', 'height': 256, 'width': 256, 'position': [0.0, 1.25, 0.0], 'orientation': [0.0, 0.0, 0.0], 'hfov': 90, 'sensor_subtype': 'PINHOLE', 'noise_model': 'None', 'noise_model_kwargs': {}, 'min_depth': 0.0, 'max_depth': 10.0, 'normalize_depth': True, 'uuid': 'robot_head_rgb'}
+            OmegaConf.set_readonly(conf, True)
+            config = conf
+
         super().__init__(config, dataset)
         self._reward_measure_name = self.config.task.reward_measure
         self._success_measure_name = self.config.task.success_measure

@@ -957,7 +957,7 @@ class PPOTrainer(BaseRLTrainer):
             agent_sensors = agent_config.sim_sensors
             render_view_uuids = [
                 agent_sensors[render_view].uuid
-                for render_view in config.habitat_baselines.video_render_views
+                for render_view in self.config.habitat_baselines.video_render_views
                 if render_view in agent_sensors
             ]
             assert len(render_view_uuids) > 0, (
