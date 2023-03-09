@@ -107,9 +107,8 @@ class ArmActionConfig(ActionConfig):
 
     :property grasp_thresh_dist: The grasp action will only work on the closest object if its distance to the end effector is smaller than this value. Only for `MagicGraspAction` grip_controller.
     :property grip_controller: Can either be None,  `MagicGraspAction` or `SuctionGraspAction`. If None, the arm will be unable to grip object. Magic grasp will grasp the object if the end effector is within grasp_thresh_dist of an object, with `SuctionGraspAction`, the object needs to be in contact with the end effector.
-    :property gaze_distance_range: The gaze action will only work on the closet object if its distance to the end effector is smaller than this value. Only for `GazeGraspAction` grip_controller.
-    :property center_cone_angle_threshold: The threshold angle between the line of sight and center_cone_vector. Only for `GazeGraspAction` grip_controller.
-    :property center_cone_vector: The vector that the camera's line of sight should be when grasping the object. Only for `GazeGraspAction` grip_controller.
+    :property gaze_distance_range: The gaze action will only work on the closet object ig its distance to the end effector is smaller than this value. Only for `GazeGraspAction` grip_controller.
+    :property center_cone_angle: Only for `GazeGraspAction` grip_controller.
     """
     type: str = "ArmAction"
     arm_controller: str = "ArmRelPosAction"
@@ -123,8 +122,7 @@ class ArmActionConfig(ActionConfig):
     should_clip: bool = False
     render_ee_target: bool = False
     gaze_distance_range: Optional[List[float]] = None
-    center_cone_angle_threshold: float = 0.0
-    center_cone_vector: Optional[List[float]] = None
+    center_cone_angle: float = 0.0
 
 
 @attr.s(auto_attribs=True, slots=True)
@@ -873,6 +871,15 @@ class HabitatSimSemanticSensorConfig(SimulatorCameraSensorConfig):
 
 
 @attr.s(auto_attribs=True, slots=True)
+class HeadSemanticSensorConfig(SimulatorCameraSensorConfig):
+    type: str = "HabitatSimSemanticSensor"
+    uuid: str = "head_semantic"
+    width: int = 256
+    height: int = 256
+
+
+@dataclass
+>>>>>>> 096c27c... add gaze_policy
 class HabitatSimEquirectangularRGBSensorConfig(SimulatorSensorConfig):
     type: str = "HabitatSimEquirectangularRGBSensor"
 
@@ -1289,6 +1296,12 @@ cs.store(
     group="habitat/simulator/sim_sensors",
     name="semantic_sensor",
     node=HabitatSimSemanticSensorConfig,
+)
+
+cs.store(
+    group="habitat/simulator/sim_sensors",
+    name="head_semantic_sensor",
+    node=HeadSemanticSensorConfig,
 )
 
 cs.store(
