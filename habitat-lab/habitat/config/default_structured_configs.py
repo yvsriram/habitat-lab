@@ -122,6 +122,9 @@ class ArmActionConfig(ActionConfig):
     ee_ctrl_lim: float = 0.015
     should_clip: bool = False
     render_ee_target: bool = False
+    gaze_distance_range: Optional[List[float]] = None
+    center_cone_angle_threshold: float = 0.0
+    center_cone_vector: Optional[List[float]] = None
 
 
 @attr.s(auto_attribs=True, slots=True)

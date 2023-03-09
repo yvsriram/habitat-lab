@@ -158,3 +158,202 @@ class SuctionGraspAction(MagicGraspAction):
 
         if attempt_snap_entity is not None:
             self._sim.grasp_mgr.snap_to_marker(str(attempt_snap_entity))
+
+
+@registry.register_task_action
+class GazeGraspAction(MagicGraspAction):
+    def __init__(self, *args, config, sim, **kwargs):
+        super().__init__(*args, config=config, sim=sim, **kwargs)
+        self.min_dist, self.max_dist = config.gaze_distance_range
+        self.center_cone_angle_threshold = np.deg2rad(
+            config.center_cone_angle_threshold
+        )
+        self.center_cone_vector = mn.Vector3(
+            config.center_cone_vector
+        ).normalized()
+
+    @property
+    def action_space(self):
+        return spaces.Box(shape=(1,), high=1.0, low=-1.0)
+
+    @staticmethod
+    def angle_between(v1, v2):
+        cosine = np.clip(np.dot(v1, v2), -1.0, 1.0)
+        object_angle = np.arccos(cosine)
+        return object_angle
+
+    def get_camera_object_angle(self, obj_pos):
+        """Calculates angle between gripper line-of-sight and given global position."""
+
+        # Get the camera transformation
+        cam_T = self.get_camera_transform()
+
+        # Get object location in camera frame
+        cam_obj_pos = cam_T.inverted().transform_point(obj_pos).normalized()
+
+        # Get angle between (normalized) location and the vector that the camera should
+        # look at
+        obj_angle = self.angle_between(cam_obj_pos, self.center_cone_vector)
+
+        return obj_angle
+
+    def get_camera_transform(self):
+        if isinstance(self.cur_articulated_agent, SpotRobot):
+            cam_info = self.cur_articulated_agent.params.cameras[
+                "articulated_agent_arm_depth"
+            ]
+        elif isinstance(self.cur_articulated_agent, StretchRobot):
+            cam_info = self.cur_articulated_agent.params.cameras["head"]
+        else:
+            raise NotImplementedError(
+                "This robot does not have GazeGraspAction."
+            )
+
+        # Get the camera's attached link
+        link_trans = self.cur_articulated_agent.sim_obj.get_link_scene_node(
+            cam_info.attached_link_id
+        ).transformation
+        # Get the camera offset transformation
+        offset_trans = mn.Matrix4.translation(cam_info.cam_offset_pos)
+        cam_trans = link_trans @ offset_trans @ cam_info.relative_transform
+
+        return cam_trans
+
+    def get_grasp_object_mask(self, abs_obj_idx):
+        # Save object translation before sinking the object beneath the floor
+        orig_target_obj_trans = np.array(
+            self._sim.get_rigid_object_manager()
+            .get_object_by_id(abs_obj_idx)
+            .translation
+        )
+
+        # Get the depth image
+        if isinstance(self.cur_articulated_agent, SpotRobot):
+            depth_img = self._sim._sensor_suite.get_observations(
+                self._sim.get_sensor_observations()
+            )["articulated_agent_arm_depth"]
+        elif isinstance(self.cur_articulated_agent, StretchRobot):
+            depth_img = self._sim._sensor_suite.get_observations(
+                self._sim.get_sensor_observations()
+            )["head_depth"]
+        else:
+            raise NotImplementedError(
+                "This robot does not have GazeGraspAction."
+            )
+
+        # Sink the object beneath the floor where it will not be seen
+        self._sim.get_rigid_object_manager().get_object_by_id(
+            abs_obj_idx
+        ).translation = np.array([0.0, -15.0, 0.0])
+        self._sim.internal_step(0)
+
+        # Get new depth image
+        if isinstance(self.cur_articulated_agent, SpotRobot):
+            depth_img_no_target_obj = self._sim._sensor_suite.get_observations(
+                self._sim.get_sensor_observations()
+            )["articulated_agent_arm_depth"]
+        elif isinstance(self.cur_articulated_agent, StretchRobot):
+            depth_img_no_target_obj = self._sim._sensor_suite.get_observations(
+                self._sim.get_sensor_observations()
+            )["head_depth"]
+        else:
+            raise NotImplementedError(
+                "This robot does not have GazeGraspAction."
+            )
+
+        # Return the object to its original transformation
+        self._sim.get_rigid_object_manager().get_object_by_id(
+            abs_obj_idx
+        ).translation = orig_target_obj_trans
+        self._sim.internal_step(0)
+
+        # Get binary absolute difference mask
+        abs_diff = np.uint8(np.abs(depth_img - depth_img_no_target_obj) * 255)
+        abs_diff[abs_diff > 0] = 255  # type: ignore
+
+        # Denoise mask
+        abs_diff_denoised = cv2.blur(abs_diff, (5, 5))
+        abs_diff_denoised[abs_diff_denoised < 255] = 0  # type: ignore
+
+        return abs_diff_denoised
+
+    def determine_center_object(self):
+        """Determine if an object is at the center of the frame and in range"""
+        if isinstance(self.cur_articulated_agent, SpotRobot):
+            cam_pos = (
+                self._sim.agents[0]
+                .get_state()
+                .sensor_states["articulated_agent_arm_rgb"]
+                .position
+            )
+        elif isinstance(self.cur_articulated_agent, StretchRobot):
+            cam_pos = (
+                self._sim.agents[0]
+                .get_state()
+                .sensor_states["head_rgb"]
+                .position
+            )
+        else:
+            raise NotImplementedError(
+                "This robot does not have GazeGraspAction."
+            )
+
+        rom = self._sim.get_rigid_object_manager()
+        for obj_idx, abs_obj_idx in enumerate(self._sim.scene_obj_ids):
+            obj_pos = rom.get_object_by_id(abs_obj_idx).translation
+
+            # Skip if not in distance range
+            dist = np.linalg.norm(obj_pos - cam_pos)
+            if dist < self.min_dist or dist > self.max_dist:
+                continue
+
+            # Skip if not in the central cone
+            obj_angle = self.get_camera_object_angle(obj_pos)
+            if abs(obj_angle) > self.center_cone_angle_threshold:
+                continue
+
+            # Check if the object is blocking the center pixel
+            abs_diff_denoised = self.get_grasp_object_mask(abs_obj_idx)
+            # Get the bounding box
+            x, y, w, h = cv2.boundingRect(abs_diff_denoised)
+            height, width = abs_diff_denoised.shape
+            if (
+                x <= width // 2
+                and width // 2 <= x + w
+                and y <= height // 2
+                and height // 2 <= y + h
+            ):
+                # At this point, there should be an object at the center pixel
+                return obj_idx, obj_pos
+
+        return None, None
+
+    def _grasp(self):
+        # Check if the object is in the center of the camera
+        center_obj_idx, center_obj_pos = self.determine_center_object()
+
+        # If there is nothing to grasp, then we return
+        if center_obj_idx is None:
+            return
+
+        keep_T = mn.Matrix4.translation(mn.Vector3(0.1, 0.0, 0.0))
+
+        self.cur_grasp_mgr.snap_to_obj(
+            self._sim.scene_obj_ids[center_obj_idx],
+            force=False,
+            rel_pos=mn.Vector3(0.1, 0.0, 0.0),
+            keep_T=keep_T,
+        )
+        return
+
+    def _ungrasp(self):
+        self.cur_grasp_mgr.desnap()
+
+    def step(self, grip_action, should_step=True, *args, **kwargs):
+        if grip_action is None:
+            return
+
+        if grip_action >= 0 and not self.cur_grasp_mgr.is_grasped:
+            self._grasp()
+        elif grip_action < 0 and self.cur_grasp_mgr.is_grasped:
+            self._ungrasp()
