@@ -11,8 +11,8 @@ import magnum as mn
 import numpy as np
 from gym import spaces
 
-from habitat.articulated_agents.robots.spot_robot import SpotRobot
-from habitat.articulated_agents.robots.stretch_robot import StretchRobot
+from habitat.robots.spot_robot import SpotRobot
+from habitat.robots.stretch_robot import StretchRobot
 from habitat.core.registry import registry
 from habitat.tasks.rearrange.actions.robot_action import RobotAction
 from habitat.tasks.rearrange.rearrange_sim import RearrangeSim
@@ -201,19 +201,19 @@ class GazeGraspAction(MagicGraspAction):
         return obj_angle
 
     def get_camera_transform(self):
-        if isinstance(self.cur_articulated_agent, SpotRobot):
-            cam_info = self.cur_articulated_agent.params.cameras[
+        if isinstance(self._sim.robot, SpotRobot):
+            cam_info = self._sim.robot.params.cameras[
                 "articulated_agent_arm_depth"
             ]
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
-            cam_info = self.cur_articulated_agent.params.cameras["head"]
+        elif isinstance(self._sim.robot, StretchRobot):
+            cam_info = self._sim.robot.params.cameras["head"]
         else:
             raise NotImplementedError(
                 "This robot does not have GazeGraspAction."
             )
 
         # Get the camera's attached link
-        link_trans = self.cur_articulated_agent.sim_obj.get_link_scene_node(
+        link_trans = self._sim.robot.sim_obj.get_link_scene_node(
             cam_info.attached_link_id
         ).transformation
         # Get the camera offset transformation
@@ -231,14 +231,14 @@ class GazeGraspAction(MagicGraspAction):
         )
 
         # Get the depth image
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             depth_img = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
             )["articulated_agent_arm_depth"]
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             depth_img = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
-            )["head_depth"]
+            )["robot_head_depth"]
         else:
             raise NotImplementedError(
                 "This robot does not have GazeGraspAction."
@@ -251,14 +251,14 @@ class GazeGraspAction(MagicGraspAction):
         self._sim.internal_step(0)
 
         # Get new depth image
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             depth_img_no_target_obj = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
             )["articulated_agent_arm_depth"]
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             depth_img_no_target_obj = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
-            )["head_depth"]
+            )["robot_head_depth"]
         else:
             raise NotImplementedError(
                 "This robot does not have GazeGraspAction."
@@ -282,18 +282,18 @@ class GazeGraspAction(MagicGraspAction):
 
     def determine_center_object(self):
         """Determine if an object is at the center of the frame and in range"""
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             cam_pos = (
                 self._sim.agents[0]
                 .get_state()
                 .sensor_states["articulated_agent_arm_rgb"]
                 .position
             )
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             cam_pos = (
                 self._sim.agents[0]
                 .get_state()
-                .sensor_states["head_rgb"]
+                .sensor_states["robot_head_rgb"]
                 .position
             )
         else:
@@ -330,7 +330,6 @@ class GazeGraspAction(MagicGraspAction):
         # Get object location in camera frame
         cam_obj_pos = cam_T.inverted().transform_point(obj_pos).normalized()
 
-        print("cam_obj_pos:", cam_obj_pos, obj_pos, cam_T.translation)
 
         # Get angle between (normalized) location and unit vector
         obj_angle = self.angle_between(cam_obj_pos, mn.Vector3(0, 0, -1))
@@ -338,13 +337,13 @@ class GazeGraspAction(MagicGraspAction):
         return obj_angle
 
     def get_camera_transform(self):
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             cam_T = self._sim._sensors[
                 "articulated_agent_arm_rgb"
             ]._sensor_object.node.transformation
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             cam_T = self._sim._sensors[
-                "head_rgb"
+                "robot_head_rgb"
             ]._sensor_object.node.transformation
         else:
             raise NotImplementedError(
@@ -368,14 +367,14 @@ class GazeGraspAction(MagicGraspAction):
             .translation
         )
 
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             depth_img = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
             )["articulated_agent_arm_depth"]
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             depth_img = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
-            )["head_depth"]
+            )["robot_head_depth"]
         else:
             raise NotImplementedError(
                 "This robot dose not have GazeGraspAction."
@@ -388,14 +387,14 @@ class GazeGraspAction(MagicGraspAction):
         self._sim.internal_step(0)
 
         # Get new depth image
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             depth_img_no_target_obj = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
             )["articulated_agent_arm_depth"]
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             depth_img_no_target_obj = self._sim._sensor_suite.get_observations(
                 self._sim.get_sensor_observations()
-            )["head_depth"]
+            )["robot_head_depth"]
         else:
             raise NotImplementedError(
                 "This robot dose not have GazeGraspAction."
@@ -419,13 +418,13 @@ class GazeGraspAction(MagicGraspAction):
 
     def determine_center_object(self):
         """Determine if an object is at the center of the frame and in range"""
-        if isinstance(self.cur_articulated_agent, SpotRobot):
+        if isinstance(self._sim.robot, SpotRobot):
             cam_pos = self._sim._sensors[
                 "articulated_agent_arm_rgb"
             ]._sensor_object.node.transformation.translation
-        elif isinstance(self.cur_articulated_agent, StretchRobot):
+        elif isinstance(self._sim.robot, StretchRobot):
             cam_pos = self._sim._sensors[
-                "head_rgb"
+                "robot_head_rgb"
             ]._sensor_object.node.transformation.translation
         else:
             raise NotImplementedError(
@@ -433,14 +432,11 @@ class GazeGraspAction(MagicGraspAction):
             )
 
         rom = self._sim.get_rigid_object_manager()
-
         for obj_idx, abs_obj_idx in enumerate(self._sim.scene_obj_ids):
             obj_pos = rom.get_object_by_id(abs_obj_idx).translation
-
             # Skip if not in distance range
             dist = np.linalg.norm(obj_pos - cam_pos)
             if dist < self.min_dist or dist > self.max_dist:
-                print("distance does not statisfy:", dist)
                 continue
 
             # Skip if not in the central cone
@@ -467,12 +463,11 @@ class GazeGraspAction(MagicGraspAction):
     def _grasp(self):
         # Check if the object is in the center of the camera
         center_obj_idx, center_object_pos = self.determine_center_object()
-
         # If there is not thing to grasp, then we return
         if center_obj_idx is None:
             return
 
-        ee_pos = self.cur_articulated_agent.ee_transform().translation
+        ee_pos = self._sim.robot.ee_transform.translation
 
         # Get the distance between the ee and the center object position
         to_target = np.linalg.norm(ee_pos - center_object_pos, ord=2)
@@ -500,7 +495,7 @@ class GazeGraspAction(MagicGraspAction):
             to_target = np.linalg.norm(ee_pos - pos[closest_idx], ord=2)
 
             if to_target < self._config.grasp_thresh_dist:
-                self.cur_articulated_agent.open_gripper()
+                self._sim.robot.open_gripper()
                 self.cur_grasp_mgr.snap_to_marker(names[closest_idx])
 
     def _ungrasp(self):
