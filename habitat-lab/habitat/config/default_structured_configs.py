@@ -137,7 +137,8 @@ class BaseVelocityActionConfig(ActionConfig):
     ang_speed: float = 10.0
     allow_dyn_slide: bool = True
     allow_back: bool = True
-
+    collision_threshold: float = 1e-5
+    navmesh_offset: Optional[List[float]] = None
 
 @attr.s(auto_attribs=True, slots=True)
 class RearrangeStopActionConfig(ActionConfig):

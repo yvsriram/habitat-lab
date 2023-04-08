@@ -640,6 +640,10 @@ class BaseWaypointVelAction(RobotAction):
         self.base_vel_ctrl.lin_vel_is_local = True
         self.base_vel_ctrl.controlling_ang_vel = True
         self.base_vel_ctrl.ang_vel_is_local = True
+        self._allow_dyn_slide = config.get("allow_dyn_slide", True)
+        self._allow_back = config.allow_back
+        self._collision_threshold = config.collision_threshold
+        self._navmesh_offset = config.navmesh_offset
         # Initialize the controller
         max_lin_speed = 30 # real Stretch max linear velocity
         max_ang_speed = 20.94 # real Stretch max angular velocity
@@ -655,6 +659,56 @@ class BaseWaypointVelAction(RobotAction):
             lin_error_tol=lin_tol,\
             ang_error_tol=ang_tol,
             max_heading_ang=max_heading_ang)
+
+    def collision_check(
+        self, trans, target_trans, target_rigid_state, compute_sliding=False
+    ):
+        """
+        trans: the transformation of the current location of the robot
+        target_trans: the transformation of the target location of the robot given the center original Navmesh
+        target_rigid_state: the target state of the robot given the center original Navmesh
+        compute_sliding: if we want to compute sliding or not
+        """
+        # Get the offset positions
+        num_check_cylinder = len(self._navmesh_offset)
+        nav_pos_3d = [
+            np.array([xz[0], 0.0, xz[1]]) for xz in self._navmesh_offset
+        ]
+        cur_pos = [trans.transform_point(xyz) for xyz in nav_pos_3d]
+        goal_pos = [target_trans.transform_point(xyz) for xyz in nav_pos_3d]
+
+        # For step filter of offset positions
+        end_pos = []
+        for i in range(num_check_cylinder):
+            pos = self._sim.step_filter(cur_pos[i], goal_pos[i])
+            # Sanitize the height
+            pos[1] = 0.0
+            cur_pos[i][1] = 0.0
+            goal_pos[i][1] = 0.0
+            end_pos.append(pos)
+
+        # Planar move distance clamped by NavMesh
+        move = []
+        for i in range(num_check_cylinder):
+            move.append((end_pos[i] - goal_pos[i]).length())
+
+        # For detection of linear or angualr velocities
+        # There is a collision if the difference between the clamped NavMesh position and target position is too great for any point.
+        diff = len([v for v in move if v > self._collision_threshold])
+
+        if diff > 0:
+            # Wrap the move direction if we use sliding
+            # Find the largest diff moving direction, which means that there is a collision in that cylinder
+            if compute_sliding:
+                max_idx = np.argmax(move)
+                move_vec = end_pos[max_idx] - cur_pos[max_idx]
+                new_end_pos = trans.translation + move_vec
+                return True, mn.Matrix4.from_(
+                    target_rigid_state.rotation.to_matrix(), new_end_pos
+                )
+            return True, trans
+        else:
+            return False, target_trans
 
     @property
     def action_space(self):
@@ -683,14 +737,12 @@ class BaseWaypointVelAction(RobotAction):
         self.cur_robot.sim_obj.joint_velocities = set_dat["vel"]
         self.cur_robot.sim_obj.joint_forces = set_dat["pos"]
 
-    def update_base(self):
+    def update_base(self, if_rotation):
         """
         Update the robot base
         """
 
         ctrl_freq = self._sim.ctrl_freq
-
-        before_trans_state = self._capture_robot_state()
 
         trans = self.cur_robot.sim_obj.transformation
         rigid_state = habitat_sim.RigidState(
@@ -701,27 +753,20 @@ class BaseWaypointVelAction(RobotAction):
         target_rigid_state = self.base_vel_ctrl.integrate_transform(
             1 / ctrl_freq, rigid_state
         )
-        end_pos = self._sim.step_filter(
-            rigid_state.translation, target_rigid_state.translation
-        )
 
         target_trans = mn.Matrix4.from_(
-            target_rigid_state.rotation.to_matrix(), end_pos
+            target_rigid_state.rotation.to_matrix(), target_rigid_state.translation
         )
+        # We do sliding only if we allow the robot to do sliding and current
+        # robot is not rotating
+        compute_sliding = self._allow_dyn_slide and not if_rotation
         self.cur_robot.sim_obj.transformation = target_trans
-
-        if not self._config.get("allow_dyn_slide", True):
-            # Check if in the new robot state the arm collides with anything.
-            # If so we have to revert back to the previous transform
-            self._sim.internal_step(-1)
-            # colls = get_collisions()
-            did_coll, _ = rearrange_collision(
-                self._sim, count_obj_colls=False
-            )
-            if did_coll:
-                # Don't allow the step, revert back.
-                self._set_robot_state(before_trans_state)
-                self.cur_robot.sim_obj.transformation = trans
+        # Check if there is a collision
+        did_coll, new_target_trans = self.collision_check(
+            trans, target_trans, target_rigid_state, compute_sliding
+        )
+        # Update the base
+        self.cur_robot.sim_obj.transformation = new_target_trans
         if self.cur_grasp_mgr.snap_idx is not None:
             # Holding onto an object, also kinematically update the object.
             # object.
@@ -768,8 +813,7 @@ class BaseWaypointVelAction(RobotAction):
         self.base_vel_ctrl.angular_velocity = mn.Vector3(0, base_action[1], 0)
 
         if lin_pos != 0.0 or ang_pos != 0.0:
-            self.update_base()
-
+            self.update_base(sel <= 0)
         if is_last_action:
             return self._sim.step(HabitatSimActions.base_velocity)
         else:
