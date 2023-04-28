@@ -972,9 +972,10 @@ class BaseWaypointTeleportAction(RobotAction):
         target_rigid_state = habitat_sim.RigidState(
             mn.Quaternion.from_matrix(target_rot), target_pos
         )
-
+        print('curr_pos: ', self._sim.robot.base_pos, self._sim.robot.base_rot, ' target_pos: ', target_pos)
         if lin_pos != 0.0 or ang_pos != 0.0:
             self.update_base(target_rigid_state, sel <= 0)
+            print('updated_pos: ', self._sim.robot.base_pos, self._sim.robot.base_rot)
         if is_last_action:
             return self._sim.step(HabitatSimActions.base_velocity)
         else:

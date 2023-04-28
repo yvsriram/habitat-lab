@@ -72,10 +72,12 @@ actions:
     center_cone_angle_threshold: 90.0
     center_cone_vector: [0.0, 1.0, 0.0]
   base_velocity:
-    type: "BaseWaypointVelAction"
-    lin_speed: 0.2500
-    ang_speed: 0.1745
+    type: "BaseWaypointTeleportAction"
+    max_forward: 0.2500
+    max_turn: 0.1745
     allow_dyn_slide: False
+    collision_threshold: 1e-5
+    navmesh_offset: [[0.0, 0.0], [-0.09, 0.08], [-0.09, -0.08], [0.12, 0.1], [0.12, -0.1], [0.12, 0.0], [-0.09, 0.0], [0.015, -0.09], [0.015, 0.10]]
 measurements:
   force_terminate:
     max_accum_force: -1.0
