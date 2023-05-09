@@ -158,6 +158,34 @@ class DynNavRLEnv(RearrangeTask):
             ]
         )
         
+        goal_view_points = [
+            v.agent_state.position for g in episode.candidate_goal_receps for v in g.view_points
+        ]
+        all_navigable = True
+        any_navigable = False
+        all_on_same_island = True
+        any_on_same_island = False
+        all_navigable_and_on_same_island = True
+        any_navigable_and_on_same_island = False
+        any_same_island_but_not_navigable = False
+        all_on_same_island_but_not_navigable = True
+        f = open('episode_view_points_filtered_set.txt', 'a')
+        for g in goal_view_points:
+            # g = sim.pathfinder.snap_point(g)
+            navigable = sim.pathfinder.is_navigable(g)
+            same_island = sim.navmesh_classification_results['active_island'] == sim.pathfinder.get_island(g)
+            all_navigable = all_navigable and navigable
+            any_navigable = any_navigable or navigable
+            all_on_same_island = all_on_same_island and same_island
+            any_on_same_island = any_on_same_island or same_island
+            all_navigable_and_on_same_island = all_navigable_and_on_same_island and navigable and same_island
+            any_navigable_and_on_same_island = any_navigable_and_on_same_island or (navigable and same_island)
+            any_same_island_but_not_navigable = any_same_island_but_not_navigable or (not navigable and same_island)
+            all_on_same_island_but_not_navigable = all_on_same_island_but_not_navigable and (not navigable and same_island)
+        print(episode.episode_id, episode.scene_id, episode.name, int(all_navigable), int(any_navigable), int(all_on_same_island), int(any_on_same_island), int(all_navigable_and_on_same_island), int(any_navigable_and_on_same_island), int(any_same_island_but_not_navigable), int(all_on_same_island_but_not_navigable), file=f)
+        
+                
+
         if self._nav_to_info.start_hold_obj_idx is not None:
             if self._sim.grasp_mgr.is_grasped:
                 raise ValueError(
