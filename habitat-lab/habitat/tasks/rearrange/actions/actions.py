@@ -14,6 +14,7 @@ import habitat_sim
 from habitat.core.embodied_task import SimulatorTaskAction
 from habitat.core.registry import registry
 from habitat.sims.habitat_simulator.actions import HabitatSimActions
+from habitat.robots.stretch_robot import StretchRobot, StretchJointStates
 
 # flake8: noqa
 # These actions need to be imported since there is a Python evaluation
@@ -27,6 +28,7 @@ from habitat.tasks.rearrange.actions.grip_actions import (
 from habitat.tasks.rearrange.actions.robot_action import RobotAction
 from habitat.tasks.rearrange.rearrange_sim import RearrangeSim
 from habitat.tasks.rearrange.utils import rearrange_collision, rearrange_logger
+from habitat.robots.stretch_robot import StretchRobot, StretchJointStates
 
 
 @registry.register_task_action
@@ -516,6 +518,51 @@ class ArmEEAction(RobotAction):
             self._sim.viz_ids["ee_target"] = self._sim.visualize_position(
                 global_pos, self._sim.viz_ids["ee_target"]
             )
+
+
+@registry.register_task_action
+class ManipulationModeAction(RobotAction):
+    """
+    The robot joints and base is changed for performing manipulation. In the case of Stretch, the head is turned to face the arm and the base is rotated left by 90 degrees
+    """
+    def __init__(self, *args, config, sim: RearrangeSim, **kwargs):
+        self._threshold = config.threshold
+
+    def step(self, *args, is_last_action, **kwargs):
+        HEAD_PAN_JOINT_IDX = 8
+        face = kwargs.get("manip_mode", [-1.0])
+        if face[0] > self._threshold and not self.task._in_manip_mode:
+            if isinstance(self._sim.robot, StretchRobot):
+                # Turn the head to face the arm
+                motor_pos = self._sim.robot.arm_motor_pos.tolist()
+                joint_pos = self._sim.robot.arm_motor_pos.tolist()
+                motor_pos[HEAD_PAN_JOINT_IDX] = StretchJointStates.NAVIGATION[HEAD_PAN_JOINT_IDX]
+                joint_pos[HEAD_PAN_JOINT_IDX] = StretchJointStates.NAVIGATION[HEAD_PAN_JOINT_IDX]
+                self.task._in_manip_mode = True
+                self._sim.robot.arm_motor_pos = motor_pos
+                self._sim.robot.arm_joint_pos = joint_pos
+                # now turn the robot's base left by 90 degrees
+                base_trans = self._sim.robot.base_transformation
+                obj_trans = self.cur_robot.sim_obj.transformation
+                turn_angle = np.pi/2  # Turn left by 90 degrees
+                rot_quat = mn.Quaternion(
+                    mn.Vector3(0, np.sin(turn_angle/2), 0), np.cos(turn_angle / 2)
+                )
+                # Get the target rotation
+                target_rot = rot_quat.to_matrix() @ obj_trans.rotation()
+                self.cur_robot.sim_obj.transformation.rotation = target_rot
+                # if the above does not work, try the following
+                target_trans = mn.Matrix4.from_(
+                    target_rot.rotation.to_matrix(),
+                    obj_trans.translation, # see if there's a difference between obj_trans and base_trans
+                )
+                self.cur_robot.sim_obj.transformation = target_trans
+
+                
+        if is_last_action:
+            return self._sim.step(HabitatSimActions.arm_action)
+        else:
+            return {}
 
 
 @registry.register_task_action
