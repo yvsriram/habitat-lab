@@ -61,6 +61,7 @@ class ObjectRearrangeEpisode(RearrangeEpisode):
     candidate_objects_hard: Optional[List[ObjectGoal]] = None
     candidate_start_receps: Optional[List[ObjectGoal]] = None
     candidate_goal_receps: Optional[List[ObjectGoal]] = None
+    name: str = None
 
 
 @registry.register_dataset(name="RearrangeDataset-v0")

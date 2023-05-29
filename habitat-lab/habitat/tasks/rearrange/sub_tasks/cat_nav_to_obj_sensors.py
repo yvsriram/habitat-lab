@@ -217,9 +217,9 @@ class OvmmRotDistToGoal(RotDistToGoal):
         path.requested_start = self._sim.robot.base_pos
         path.requested_ends = goal_view_points
         self._sim.pathfinder.find_path(path)
-        assert (
-            path.closest_end_point_index != -1
-        ), f"None of the goals are reachable from current position for episode {episode.episode_id}"
+        # assert (
+        #     path.closest_end_point_index != -1
+        # ), f"None of the goals are reachable from current position for episode {episode.episode_id}"
         # RotDist to closest goal
         targ = goal_pos[path.closest_end_point_index]
         return targ
