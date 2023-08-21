@@ -19,6 +19,8 @@ defaults:
     - ovmm_placement_stability
     - ovmm_place_success
     - ovmm_place_reward
+    - picked_object_linear_vel
+    - picked_object_angular_vel
     - num_steps
   - /habitat/task/lab_sensors:
     - joint_sensor

@@ -949,7 +949,7 @@ class PPOTrainer(BaseRLTrainer):
             ckpt_dict = {"config": None}
 
         config = self._get_resume_state_config_or_new_config(
-            ckpt_dict["config"]
+            ckpt_dict.get("config", None)
         )
 
         ppo_cfg = config.habitat_baselines.rl.ppo

@@ -30,7 +30,7 @@ habitat_baselines:
   # Force PyTorch to be single threaded as
   # this improves performance considerably
   force_torch_single_threaded: True
-  eval_keys_to_include_in_name: ["reward", "force", "success"]
+  eval_keys_to_include_in_name: ["reward", "force", "success", "stability", "velocity", "rest", "anywhere"]
 
   eval:
     video_option: ["disk"]
