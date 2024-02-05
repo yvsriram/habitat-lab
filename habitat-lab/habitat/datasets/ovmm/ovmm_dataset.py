@@ -121,6 +121,7 @@ class OVMMDatasetV0(PointNavDatasetV1):
                     )
                 )
             self.episode_indices_range = self.config.episode_indices_range
+            self.episode_ids = self.config.episode_ids
         super().__init__(config)
 
     def get_episode_iterator(
@@ -165,20 +166,17 @@ class OVMMDatasetV0(PointNavDatasetV1):
             ]
 
         all_episodes = deserialized["episodes"]
-        if self.episode_indices_range is None:
-            episodes_index_low, episodes_index_high = 0, len(all_episodes)
-        else:
-            (
-                episodes_index_low,
-                episodes_index_high,
-            ) = self.episode_indices_range
-        episode_ids_subset = None
-        if len(self.config.episode_ids) > 0:
-            episode_ids_subset = self.config.episode_ids[
-                episodes_index_low:episodes_index_high
-            ]
-        else:
-            all_episodes = all_episodes[episodes_index_low:episodes_index_high]
+
+        assert (
+            self.episode_indices_range is None or len(self.episode_ids) == 0
+        ), "Either specify a range of episodes ids to use or provide the episode ids as a list"
+
+        episode_ids_subset = self.episode_ids
+        if self.episode_indices_range is not None:
+            episode_ids_subset = range(
+                self.episode_indices_range[0], self.episode_indices_range[1]
+            )
+
         for episode in all_episodes:
             rearrangement_episode = OVMMEpisode(**episode)
             for goal_type in [
@@ -202,3 +200,8 @@ class OVMMDatasetV0(PointNavDatasetV1):
                 or int(episode["episode_id"]) in episode_ids_subset
             ):
                 self.episodes.append(rearrangement_episode)
+
+        if episode_ids_subset is not None:
+            self.episodes.sort(
+                key=lambda x: episode_ids_subset.index(int(x.episode_id))
+            )
