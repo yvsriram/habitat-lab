@@ -171,11 +171,13 @@ class OVMMDatasetV0(PointNavDatasetV1):
             self.episode_indices_range is None or len(self.episode_ids) == 0
         ), "Either specify a range of episodes ids to use or provide the episode ids as a list"
 
-        episode_ids_subset = self.episode_ids
+        episode_ids_subset = None
         if self.episode_indices_range is not None:
             episode_ids_subset = range(
                 self.episode_indices_range[0], self.episode_indices_range[1]
             )
+        elif len(self.episode_ids) > 0:
+            episode_ids_subset = self.episode_ids
 
         for episode in all_episodes:
             rearrangement_episode = OVMMEpisode(**episode)
@@ -201,6 +203,7 @@ class OVMMDatasetV0(PointNavDatasetV1):
             ):
                 self.episodes.append(rearrangement_episode)
 
+        # sort the episodes based on provided episode ids
         if episode_ids_subset is not None:
             self.episodes.sort(
                 key=lambda x: episode_ids_subset.index(int(x.episode_id))
